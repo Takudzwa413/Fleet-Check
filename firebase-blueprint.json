@@ -1,0 +1,58 @@
+{
+  "collections": {
+    "users": {
+      "description": "System user accounts for admins and fleet owners"
+    },
+    "profiles": {
+      "description": "Fleet Owner registration and compliance profiles"
+    },
+    "documents": {
+      "description": "Compliance document metadata logs"
+    },
+    "drivers": {
+      "description": "Verified driver database with encrypted PII"
+    },
+    "complaints": {
+      "description": "Fleet-lodged driver complaints and incidents"
+    },
+    "disputes": {
+      "description": "Driver disputes regarding approved incident records"
+    },
+    "evidence": {
+      "description": "Incident report file uploads and supporting documents"
+    },
+    "riskScores": {
+      "description": "Calculated driver risk ratings"
+    },
+    "auditLogs": {
+      "description": "System security and administrative audits"
+    },
+    "searchLogs": {
+      "description": "Query logs to protect driver profile harvesting"
+    },
+    "simulatedEmails": {
+      "description": "Dispatched email log simulations"
+    },
+    "projects": {
+      "description": "Vehicle Acquisition Stokvel projects and syndicates"
+    },
+    "stokvelMembers": {
+      "description": "Members enrolled in vehicle acquisition syndicates"
+    },
+    "stokvelSlots": {
+      "description": "Payout order matrix and slot allocations for vehicle deliveries"
+    },
+    "stokvelPayments": {
+      "description": "Weekly contribution schedules, POP receipts, and verified ledger entries"
+    },
+    "stokvelPenalties": {
+      "description": "Compliance late-fee notices and default penalty ledgers"
+    },
+    "stokvelBenefits": {
+      "description": "Vehicle acquisition tracking, VIN records, insurance validation, and delivery handovers"
+    },
+    "stokvelMeetings": {
+      "description": "Weekly governance records, meeting minutes, and AGM logs"
+    }
+  }
+}
