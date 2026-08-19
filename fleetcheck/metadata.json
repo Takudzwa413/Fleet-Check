@@ -1,0 +1,6 @@
+{
+  "name": "FleetCheck",
+  "description": "A secure, verified driver risk and incident reference platform for fleet owners, paired with a complete Vehicle Acquisition Stokvel governance, payout matrix, POP reconciliation, and accounting ledger system.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
