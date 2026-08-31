@@ -1,0 +1,6 @@
+{
+  "name": "FleetCheck",
+  "description": "A secure, verified driver risk and incident reference platform for South African fleet owners, featuring PDP license verification, incident reporting with right of reply, and fleet moderation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
