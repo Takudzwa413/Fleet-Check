@@ -1,19 +1,23 @@
 import React from 'react';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
-import PublicPages from './components/PublicPages';
-import AuthPages from './components/AuthPages';
-import FleetOwnerDashboard from './components/FleetOwnerDashboard';
-import DriverDashboard from './components/DriverDashboard';
-import AdminDashboard from './components/AdminDashboard';
-import DriverMarketplace from './components/DriverMarketplace';
-import VehicleMarketplace from './components/VehicleMarketplace';
-import DisputeForm from './components/DisputeForm';
 import IncidentClarificationChatModal from './components/chat/IncidentClarificationChatModal';
 import IncidentChatThreadsDrawer from './components/chat/IncidentChatThreadsDrawer';
 import ToastContainer, { ToastItem } from './components/ui/ToastNotification';
 import { User, FleetOwnerProfile, MaskedDriver } from './types';
 import { ShieldCheck, Info } from 'lucide-react';
+
+// Route-level views are lazy-loaded so a visitor only downloads the JS for the
+// page(s) they actually visit (e.g. a driver never pulls in the admin dashboard
+// bundle, a guest never pulls in jspdf/recharts used only inside dashboards).
+const PublicPages = React.lazy(() => import('./components/PublicPages'));
+const AuthPages = React.lazy(() => import('./components/AuthPages'));
+const FleetOwnerDashboard = React.lazy(() => import('./components/FleetOwnerDashboard'));
+const DriverDashboard = React.lazy(() => import('./components/DriverDashboard'));
+const AdminDashboard = React.lazy(() => import('./components/AdminDashboard'));
+const DriverMarketplace = React.lazy(() => import('./components/DriverMarketplace'));
+const VehicleMarketplace = React.lazy(() => import('./components/VehicleMarketplace'));
+const DisputeForm = React.lazy(() => import('./components/DisputeForm'));
 
 export default function App() {
   const [user, setUser] = React.useState<User | null>(null);
@@ -199,6 +203,13 @@ export default function App() {
       />
 
       <main className={`flex-grow w-full ${isDashboardView ? 'max-w-[1700px] mx-auto px-2 sm:px-4 lg:px-6 py-4' : 'max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8'}`}>
+        <React.Suspense
+          fallback={
+            <div className="flex items-center justify-center py-24">
+              <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#1f1f1f]"></div>
+            </div>
+          }
+        >
         <div className="fade-in-transition">
           {(activeTab === 'home' || activeTab === 'how-it-works' || activeTab === 'privacy' || activeTab === 'terms') && (
             <PublicPages
@@ -333,6 +344,7 @@ export default function App() {
             )
           )}
         </div>
+        </React.Suspense>
       </main>
 
       <Footer setActiveTab={setActiveTab} />

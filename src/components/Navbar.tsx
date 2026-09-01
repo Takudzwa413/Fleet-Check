@@ -145,7 +145,7 @@ export default function Navbar({
               <span className="text-xl font-bold tracking-tight text-stone-900">FleetCheck</span>
             </button>
             
-            <div className="hidden md:ml-8 md:flex md:space-x-1">
+            <div className="hidden lg:ml-8 lg:flex lg:space-x-1">
               <button
                 onClick={() => setActiveTab('home')}
                 className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors cursor-pointer ${
@@ -202,7 +202,7 @@ export default function Navbar({
             </div>
           </div>
 
-          <div className="hidden md:flex items-center space-x-3">
+          <div className="hidden lg:flex items-center space-x-3">
             {user ? (
               <>
                 {user.role === 'admin' ? (
@@ -450,7 +450,7 @@ export default function Navbar({
           </div>
 
           {/* Mobile hamburger menu button */}
-          <div className="flex items-center space-x-2 md:hidden">
+          <div className="flex items-center space-x-2 lg:hidden">
             {user && unreadCount > 0 && (
               <button
                 onClick={() => setIsOpen(!isOpen)}
@@ -474,7 +474,7 @@ export default function Navbar({
 
       {/* Mobile Menu */}
       {isOpen && (
-        <div className="md:hidden border-t border-stone-200 bg-white px-2 py-3 space-y-1 shadow-lg max-h-[85vh] overflow-y-auto">
+        <div className="lg:hidden border-t border-stone-200 bg-white px-2 py-3 space-y-1 shadow-lg max-h-[85vh] overflow-y-auto">
           <button
             onClick={() => { setActiveTab('home'); setIsOpen(false); }}
             className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-stone-700 hover:bg-stone-50"

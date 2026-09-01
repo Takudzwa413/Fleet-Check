@@ -4570,6 +4570,10 @@ app.all('/api/*', (req, res) => {
 // --- CLIENT STATIC HANDLING & VITE SERVING ---
 
 async function startServer() {
+  // Wait for the initial Firestore sync to finish before accepting traffic,
+  // so the server never serves incomplete data in the first seconds after boot.
+  await db.ready;
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

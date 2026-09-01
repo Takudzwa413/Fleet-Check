@@ -204,7 +204,17 @@ export interface DatabaseSchema {
 export class LocalDatabase {
   private data: DatabaseSchema;
 
+  // Resolves once the initial Firestore sync (or a failed attempt at one) has
+  // finished, so the HTTP server can wait for it before accepting requests —
+  // otherwise the first several seconds after every boot/deploy would serve
+  // incomplete data (only the local-first seed above, not the real dataset).
+  public ready: Promise<void>;
+  private markReady!: () => void;
+
   constructor() {
+    this.ready = new Promise<void>(resolve => {
+      this.markReady = resolve;
+    });
     // Local-first seed: these accounts must exist immediately, even before (or if)
     // the Firestore initial sync below ever completes. Without this, environments
     // where Firestore is briefly unreachable at boot would have zero accountant/
@@ -928,8 +938,12 @@ export class LocalDatabase {
 
       // Setup live listeners for sub-second synchronization
       this.setupListeners();
+      this.markReady();
     } catch (err) {
       console.error('[Firebase Engine] Startup failed:', err);
+      // Fail open: let the server start on the local-first seed data rather than
+      // hang forever if Firestore is unreachable at boot.
+      this.markReady();
     }
   }
 
