@@ -1,17 +1,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { initializeApp, getApps } from 'firebase/app';
-import {
-  getFirestore,
-  collection,
-  doc,
-  setDoc,
-  getDocs,
-  deleteDoc,
-  onSnapshot,
-  Firestore
-} from 'firebase/firestore';
+import { initializeApp, getApps, applicationDefault, cert } from 'firebase-admin/app';
+import { getFirestore, Firestore } from 'firebase-admin/firestore';
 import {
   User,
   FleetOwnerProfile,
@@ -49,8 +40,26 @@ if (fs.existsSync(configPath)) {
   }
 }
 
-// Initialize Firebase App
-const app = getApps().length === 0 ? initializeApp(config) : getApps()[0];
+// Initialize Firebase Admin App. This talks to Firestore as a trusted server
+// identity (bypassing firestore.rules entirely), which is what lets rules be
+// locked down to deny direct client access without breaking this server.
+//
+// Credential resolution, in order:
+//   1. GOOGLE_APPLICATION_CREDENTIALS env var pointing at a service account
+//      JSON key (useful for local dev, if you ever obtain one).
+//   2. Application Default Credentials from the environment — on Google
+//      Cloud Run/GCE this resolves automatically to the attached compute
+//      service account, no key file needed.
+// If neither is available (e.g. local dev with no credentials at all), the
+// first real Firestore call throws, which is caught by initFirebase()'s
+// try/catch below and the server falls back to local-only seed data rather
+// than failing to start.
+const app = getApps().length === 0
+  ? initializeApp({
+      credential: process.env.GOOGLE_APPLICATION_CREDENTIALS ? cert(process.env.GOOGLE_APPLICATION_CREDENTIALS) : applicationDefault(),
+      projectId: config.projectId
+    })
+  : getApps()[0];
 
 // Instantiate Firestore DB using applet configuration
 const firestoreDb: Firestore = getFirestore(app, config.firestoreDatabaseId);
@@ -82,13 +91,13 @@ export function safeSetDoc(col: string, id: string, data: any, options?: { merge
   if (!id || !col) return;
   try {
     const cleanData = sanitizeForFirestore(data);
-    const docRef = doc(firestoreDb, col, id);
+    const docRef = firestoreDb.collection(col).doc(id);
     if (options?.merge) {
-      setDoc(docRef, cleanData, { merge: true }).catch(err => {
+      docRef.set(cleanData, { merge: true }).catch(err => {
         console.error(`[Firestore Sync] Failed to merge into ${col}/${id}:`, err?.message || err);
       });
     } else {
-      setDoc(docRef, cleanData).catch(err => {
+      docRef.set(cleanData).catch(err => {
         console.error(`[Firestore Sync] Failed to save to ${col}/${id}:`, err?.message || err);
       });
     }
@@ -459,7 +468,12 @@ export class LocalDatabase {
   private async initFirebase() {
     try {
       console.log('[Firebase Engine] Connecting to Google Cloud Firestore...');
-      
+
+      // Fail fast on a single lightweight call rather than letting every
+      // subsequent Firestore operation below independently time out on bad
+      // credentials — each one logs its own (noisy) rejection.
+      await firestoreDb.collection('users').limit(1).get();
+
       // Clean up previous dummy data (for production publishing preparation)
       const dummyCollections = [
         { name: 'users', ids: ['usr_owner_1', 'usr_owner_2', 'usr_james', 'usr_sipho', 'usr_thabo'] },
@@ -476,14 +490,14 @@ export class LocalDatabase {
       for (const col of dummyCollections) {
         for (const id of col.ids) {
           try {
-            await deleteDoc(doc(firestoreDb, col.name, id));
+            await firestoreDb.collection(col.name).doc(id).delete();
           } catch (e) {
             // ignore
           }
         }
       }
 
-      const usersSnap = await getDocs(collection(firestoreDb, 'users'));
+      const usersSnap = await firestoreDb.collection('users').get();
       if (usersSnap.empty || (usersSnap.size === 1 && usersSnap.docs[0].id === 'usr_admin' && this.data.users.length === 0)) {
         await this.seedInitialDataToFirestore();
       } else {
@@ -513,7 +527,7 @@ export class LocalDatabase {
       ];
 
       for (const col of collections) {
-        const snap = await getDocs(collection(firestoreDb, col.name));
+        const snap = await firestoreDb.collection(col.name).get();
         const list: any[] = [];
         snap.forEach(docSnap => {
           list.push({ id: docSnap.id, ...docSnap.data() });
@@ -970,8 +984,7 @@ export class LocalDatabase {
     ];
 
     collections.forEach(({ name, key }) => {
-      onSnapshot(
-        collection(firestoreDb, name),
+      firestoreDb.collection(name).onSnapshot(
         snapshot => {
           const list: any[] = [];
           snapshot.forEach(docSnap => {
@@ -1390,23 +1403,23 @@ export class LocalDatabase {
 
   public deleteUser(id: string) {
     this.data.users = this.data.users.filter(u => u.id !== id);
-    deleteDoc(doc(firestoreDb, 'users', id)).catch(err => console.error('Firestore delete user failed:', err));
+    firestoreDb.collection('users').doc(id).delete().catch(err => console.error('Firestore delete user failed:', err));
   }
 
   public deleteFleetOwnerProfile(id: string) {
     this.data.fleetOwnerProfiles = this.data.fleetOwnerProfiles.filter(p => p.id !== id);
-    deleteDoc(doc(firestoreDb, 'profiles', id)).catch(err => console.error('Firestore delete profile failed:', err));
+    firestoreDb.collection('profiles').doc(id).delete().catch(err => console.error('Firestore delete profile failed:', err));
   }
 
   public deleteDriverProfile(id: string) {
     if (!this.data.driverProfiles) this.data.driverProfiles = [];
     this.data.driverProfiles = this.data.driverProfiles.filter(dp => dp.id !== id);
-    deleteDoc(doc(firestoreDb, 'driverProfiles', id)).catch(err => console.error('Firestore delete driverProfile failed:', err));
+    firestoreDb.collection('driverProfiles').doc(id).delete().catch(err => console.error('Firestore delete driverProfile failed:', err));
   }
 
   public deleteDriver(id: string) {
     this.data.drivers = this.data.drivers.filter(d => d.id !== id);
-    deleteDoc(doc(firestoreDb, 'drivers', id)).catch(err => console.error('Firestore delete driver failed:', err));
+    firestoreDb.collection('drivers').doc(id).delete().catch(err => console.error('Firestore delete driver failed:', err));
   }
 
   public addProfile(profile: FleetOwnerProfile) {
@@ -1533,7 +1546,7 @@ export class LocalDatabase {
 
     // Delete duplicate driver record
     this.data.drivers = this.data.drivers.filter(d => d.id !== duplicateId);
-    deleteDoc(doc(firestoreDb, 'drivers', duplicateId)).catch(err => console.error('Firestore delete driver failed:', err));
+    firestoreDb.collection('drivers').doc(duplicateId).delete().catch(err => console.error('Firestore delete driver failed:', err));
 
     // Recompute risk score for primary
     this.calculateDriverRiskScore(primaryId);
@@ -1799,7 +1812,7 @@ export class LocalDatabase {
 
   public deleteVehicleListing(id: string) {
     this.data.vehicleListings = (this.data.vehicleListings || []).filter(v => v.id !== id);
-    deleteDoc(doc(firestoreDb, 'vehicleListings', id)).catch(err => console.error('Firestore delete vehicleListing failed:', err));
+    firestoreDb.collection('vehicleListings').doc(id).delete().catch(err => console.error('Firestore delete vehicleListing failed:', err));
   }
 
   public getMaskedVehicleListing(listing: VehicleListing, viewerRole: UserRole | 'guest'): MaskedVehicleListing {
@@ -1851,7 +1864,7 @@ export class LocalDatabase {
 
     const users = [adminUser];
     for (const u of users) {
-      await setDoc(doc(firestoreDb, 'users', u.id), u);
+      await firestoreDb.collection('users').doc(u.id).set(u);
     }
 
     console.log('[Firebase Engine] Initial seed uploaded to Firestore successfully.');

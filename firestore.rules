@@ -1,9 +1,15 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // All application data access goes through the Express server (server.ts),
+    // which talks to Firestore via the Admin SDK (server/db.ts) and therefore
+    // bypasses these rules entirely — it authenticates as a trusted server
+    // identity, not as an end user. The only client-side use of Firebase is
+    // Google Sign-In (src/lib/firebase.ts), which uses Firebase Auth, not
+    // Firestore. So there is no legitimate reason for any direct client
+    // access to Firestore, and it is denied outright.
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }
-
