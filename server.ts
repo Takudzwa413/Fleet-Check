@@ -1,3 +1,8 @@
+// Must run before ./server/db is imported: that module reads
+// process.env.GOOGLE_APPLICATION_CREDENTIALS at module-load time to set up
+// the Firebase Admin SDK, so .env has to be loaded first.
+import 'dotenv/config';
+
 import express, { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import path from 'path';
