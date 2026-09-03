@@ -40,23 +40,46 @@ if (fs.existsSync(configPath)) {
   }
 }
 
+// Resolves the credential to hand to initializeApp() below without ever
+// throwing synchronously — cert() itself reads/parses the file (or object)
+// eagerly and throws if it's missing/malformed, and that would happen at
+// module-load time, before initFirebase()'s try/catch exists to catch it,
+// killing the whole server on import. GOOGLE_APPLICATION_CREDENTIALS may
+// hold either a file path or (on some platforms) inline JSON, so both are
+// checked defensively before falling back to Application Default Credentials
+// (lazy — safe on Cloud Run/GCE, and safe with nothing set at all).
+function getAdminCredential() {
+  const raw = process.env.GOOGLE_APPLICATION_CREDENTIALS?.trim();
+  if (raw) {
+    try {
+      if (raw.startsWith('{')) {
+        const parsed = JSON.parse(raw);
+        if (parsed.private_key && parsed.client_email) {
+          return cert(parsed);
+        }
+        console.error('[Firebase Engine] GOOGLE_APPLICATION_CREDENTIALS is JSON but missing private_key/client_email; falling back to Application Default Credentials.');
+      } else if (fs.existsSync(raw)) {
+        return cert(raw);
+      } else {
+        console.error(`[Firebase Engine] GOOGLE_APPLICATION_CREDENTIALS path "${raw}" does not exist; falling back to Application Default Credentials.`);
+      }
+    } catch (err: any) {
+      console.error('[Firebase Engine] Failed to load GOOGLE_APPLICATION_CREDENTIALS:', err?.message || err);
+    }
+  }
+  return applicationDefault();
+}
+
 // Initialize Firebase Admin App. This talks to Firestore as a trusted server
 // identity (bypassing firestore.rules entirely), which is what lets rules be
 // locked down to deny direct client access without breaking this server.
-//
-// Credential resolution, in order:
-//   1. GOOGLE_APPLICATION_CREDENTIALS env var pointing at a service account
-//      JSON key (useful for local dev, if you ever obtain one).
-//   2. Application Default Credentials from the environment — on Google
-//      Cloud Run/GCE this resolves automatically to the attached compute
-//      service account, no key file needed.
-// If neither is available (e.g. local dev with no credentials at all), the
-// first real Firestore call throws, which is caught by initFirebase()'s
+// If no real credentials are available (e.g. local dev with nothing set),
+// the first real Firestore call throws, which is caught by initFirebase()'s
 // try/catch below and the server falls back to local-only seed data rather
 // than failing to start.
 const app = getApps().length === 0
   ? initializeApp({
-      credential: process.env.GOOGLE_APPLICATION_CREDENTIALS ? cert(process.env.GOOGLE_APPLICATION_CREDENTIALS) : applicationDefault(),
+      credential: getAdminCredential(),
       projectId: config.projectId
     })
   : getApps()[0];
@@ -103,6 +126,17 @@ export function safeSetDoc(col: string, id: string, data: any, options?: { merge
     }
   } catch (err: any) {
     console.error(`[Firestore Sync] Error preparing document for ${col}/${id}:`, err?.message || err);
+  }
+}
+
+export function safeDeleteDoc(col: string, id: string) {
+  if (!id || !col) return;
+  try {
+    firestoreDb.collection(col).doc(id).delete().catch(err => {
+      console.error(`[Firestore Sync] Failed to delete ${col}/${id}:`, err?.message || err);
+    });
+  } catch (err: any) {
+    console.error(`[Firestore Sync] Error deleting document ${col}/${id}:`, err?.message || err);
   }
 }
 
@@ -1403,23 +1437,23 @@ export class LocalDatabase {
 
   public deleteUser(id: string) {
     this.data.users = this.data.users.filter(u => u.id !== id);
-    firestoreDb.collection('users').doc(id).delete().catch(err => console.error('Firestore delete user failed:', err));
+    safeDeleteDoc('users', id);
   }
 
   public deleteFleetOwnerProfile(id: string) {
     this.data.fleetOwnerProfiles = this.data.fleetOwnerProfiles.filter(p => p.id !== id);
-    firestoreDb.collection('profiles').doc(id).delete().catch(err => console.error('Firestore delete profile failed:', err));
+    safeDeleteDoc('profiles', id);
   }
 
   public deleteDriverProfile(id: string) {
     if (!this.data.driverProfiles) this.data.driverProfiles = [];
     this.data.driverProfiles = this.data.driverProfiles.filter(dp => dp.id !== id);
-    firestoreDb.collection('driverProfiles').doc(id).delete().catch(err => console.error('Firestore delete driverProfile failed:', err));
+    safeDeleteDoc('driverProfiles', id);
   }
 
   public deleteDriver(id: string) {
     this.data.drivers = this.data.drivers.filter(d => d.id !== id);
-    firestoreDb.collection('drivers').doc(id).delete().catch(err => console.error('Firestore delete driver failed:', err));
+    safeDeleteDoc('drivers', id);
   }
 
   public addProfile(profile: FleetOwnerProfile) {
@@ -1546,7 +1580,7 @@ export class LocalDatabase {
 
     // Delete duplicate driver record
     this.data.drivers = this.data.drivers.filter(d => d.id !== duplicateId);
-    firestoreDb.collection('drivers').doc(duplicateId).delete().catch(err => console.error('Firestore delete driver failed:', err));
+    safeDeleteDoc('drivers', duplicateId);
 
     // Recompute risk score for primary
     this.calculateDriverRiskScore(primaryId);
@@ -1812,7 +1846,7 @@ export class LocalDatabase {
 
   public deleteVehicleListing(id: string) {
     this.data.vehicleListings = (this.data.vehicleListings || []).filter(v => v.id !== id);
-    firestoreDb.collection('vehicleListings').doc(id).delete().catch(err => console.error('Firestore delete vehicleListing failed:', err));
+    safeDeleteDoc('vehicleListings', id);
   }
 
   public getMaskedVehicleListing(listing: VehicleListing, viewerRole: UserRole | 'guest'): MaskedVehicleListing {

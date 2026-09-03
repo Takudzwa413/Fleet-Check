@@ -82,6 +82,10 @@ function rateLimiter(req: Request, res: Response, next: NextFunction) {
 
 app.use(rateLimiter);
 
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // Auth Middleware
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
