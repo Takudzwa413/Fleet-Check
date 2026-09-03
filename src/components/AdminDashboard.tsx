@@ -5,6 +5,7 @@ import FleetIncidentTrends from './admin/FleetIncidentTrends';
 import AuditTrailModule from './admin/AuditTrailModule';
 import BulkConfirmModal from './admin/BulkConfirmModal';
 import AdminAccountSettingsModal from './admin/AdminAccountSettingsModal';
+import AccountDataModal from './account/AccountDataModal';
 import GeographicalHeatMap from './admin/GeographicalHeatMap';
 import RealtimeNotificationFeed from './admin/RealtimeNotificationFeed';
 import FleetOwnersManagement from './admin/FleetOwnersManagement';
@@ -24,6 +25,7 @@ interface AdminDashboardProps {
 export default function AdminDashboard({ user, token, onLogout, onOpenChat, onOpenChatThreads }: AdminDashboardProps) {
   const [currentUser, setCurrentUser] = React.useState<User>(user);
   const [isSettingsOpen, setIsSettingsOpen] = React.useState(false);
+  const [showAccountDataModal, setShowAccountDataModal] = React.useState(false);
   const [adminTab, setAdminTab] = React.useState<'verifications' | 'complaints' | 'drivers' | 'disputes' | 'users' | 'audit_logs' | 'emails' | 'heatmap' | 'fleet_owners' | 'drivers_mgmt' | 'admins_mgmt' | 'vehicle_listings'>('verifications');
 
   // Queues data
@@ -847,6 +849,14 @@ export default function AdminDashboard({ user, token, onLogout, onOpenChat, onOp
           >
             <Settings className="h-3.5 w-3.5 text-stone-300" />
             <span>Account Settings</span>
+          </button>
+
+          <button
+            onClick={() => setShowAccountDataModal(true)}
+            className="px-3.5 py-2 bg-white border border-stone-200 hover:bg-stone-50 text-stone-700 rounded-xl text-xs font-bold flex items-center space-x-1.5 transition-all cursor-pointer shadow-xs"
+            title="Export or delete my account data"
+          >
+            <span>My Data</span>
           </button>
         </div>
       </div>
@@ -1833,6 +1843,13 @@ export default function AdminDashboard({ user, token, onLogout, onOpenChat, onOp
         user={currentUser}
         token={token}
         onUserUpdated={(updated) => setCurrentUser(updated)}
+      />
+
+      <AccountDataModal
+        isOpen={showAccountDataModal}
+        onClose={() => setShowAccountDataModal(false)}
+        token={token}
+        onAccountDeleted={onLogout}
       />
     </DashboardLayout>
   );

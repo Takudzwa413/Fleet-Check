@@ -10,6 +10,7 @@ import DriverReviewsSection from './reviews/DriverReviewsSection';
 import DriverSearchModule from './fleet-owner/DriverSearchModule';
 import SearchAnalyticsChart from './fleet-owner/SearchAnalyticsChart';
 import DriverDocumentsModule from './driver/DriverDocumentsModule';
+import AccountDataModal from './account/AccountDataModal';
 
 interface DriverDashboardProps {
   user: User;
@@ -22,6 +23,7 @@ export default function DriverDashboard({ user, onLogout, onOpenChat, onOpenChat
   const [activeTab, setActiveTab] = useState<'profile' | 'search_gateway' | 'fleet_link' | 'complaints' | 'reviews' | 'documents'>('profile');
   const [activeSearchQuery, setActiveSearchQuery] = useState('');
   const authToken = localStorage.getItem('fc_token') || '';
+  const [showAccountDataModal, setShowAccountDataModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<DriverProfile | null>(null);
   const [complaints, setComplaints] = useState<(Complaint & { dispute?: any })[]>([]);
@@ -445,6 +447,14 @@ export default function DriverDashboard({ user, onLogout, onOpenChat, onOpenChat
       avatarInitials: 'DA',
       actionLabel: 'Contact',
       onAction: () => alert('Contacting Driver Dispute Support at disputes@fleetcheck.co.za')
+    },
+    {
+      id: 'account_data',
+      title: 'My Data & Account',
+      subtitle: 'Export or delete your account',
+      avatarInitials: 'DL',
+      actionLabel: 'Manage',
+      onAction: () => setShowAccountDataModal(true)
     }
   ];
 
@@ -1237,6 +1247,13 @@ export default function DriverDashboard({ user, onLogout, onOpenChat, onOpenChat
           </div>
         </div>
       )}
+
+      <AccountDataModal
+        isOpen={showAccountDataModal}
+        onClose={() => setShowAccountDataModal(false)}
+        token={authToken}
+        onAccountDeleted={onLogout}
+      />
     </DashboardLayout>
   );
 }

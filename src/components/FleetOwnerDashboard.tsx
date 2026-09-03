@@ -15,6 +15,7 @@ import MyFleetDriversModule from './fleet-owner/MyFleetDriversModule';
 import VehicleListingsModule from './fleet-owner/VehicleListingsModule';
 import { Tooltip, StatusBadgeWithTooltip, RiskBadgeWithTooltip } from './ui/Tooltip';
 import SearchAnalyticsChart from './fleet-owner/SearchAnalyticsChart';
+import AccountDataModal from './account/AccountDataModal';
 
 interface FleetOwnerDashboardProps {
   user: User;
@@ -38,6 +39,7 @@ export default function FleetOwnerDashboard({
   
   // Modals state
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showAccountDataModal, setShowAccountDataModal] = useState(false);
   const [previewModalDoc, setPreviewModalDoc] = useState<any | null>(null);
 
   // Password Modal Form State
@@ -267,6 +269,14 @@ export default function FleetOwnerDashboard({
       avatarInitials: 'PW',
       actionLabel: 'Settings',
       onAction: () => setShowPasswordModal(true)
+    },
+    {
+      id: '3',
+      title: 'My Data & Account',
+      subtitle: 'Export or delete your account',
+      avatarInitials: 'DL',
+      actionLabel: 'Manage',
+      onAction: () => setShowAccountDataModal(true)
     }
   ];
 
@@ -586,6 +596,13 @@ export default function FleetOwnerDashboard({
           </div>
         </div>
       )}
+
+      <AccountDataModal
+        isOpen={showAccountDataModal}
+        onClose={() => setShowAccountDataModal(false)}
+        token={token}
+        onAccountDeleted={onLogout}
+      />
     </DashboardLayout>
   );
 }

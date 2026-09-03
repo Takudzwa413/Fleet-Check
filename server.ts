@@ -38,12 +38,10 @@ app.use((_req: Request, res: Response, next: NextFunction) => {
 // Express config - restricted body limit for DOS protection
 app.use(express.json({ limit: '2mb' }));
 
-// Simple in-memory session manager
-const sessions = new Map<string, { userId: string; expiresAt: number }>();
+// Sessions and password-reset tokens are persisted in Firestore via db.ts
+// (see SessionRecord/ResetTokenRecord) rather than kept here in memory, so a
+// login survives a server restart/redeploy.
 const SESSION_DURATION = 3600000 * 24; // 24 hours
-
-// Simple in-memory password reset manager
-const resetTokens = new Map<string, { email: string; expiresAt: number }>();
 
 // Simple in-memory Rate Limiting for API routes
 const rateLimits = new Map<string, { count: number; lastReset: number }>();
@@ -86,6 +84,35 @@ app.get('/api/health', (_req: Request, res: Response) => {
   res.status(200).json({ status: 'ok' });
 });
 
+// Tighter, dedicated limiter for auth endpoints -- the general 600/min limiter
+// above is far too loose to slow down password guessing. Kept in-memory and
+// per-instance like the general limiter (same trade-off: resets on
+// restart/redeploy, doesn't share state across instances if this is ever
+// scaled beyond one), which is an accepted limitation at this scale rather
+// than standing up shared infra (e.g. Redis) for it.
+const authRateLimits = new Map<string, { count: number; lastReset: number }>();
+const AUTH_RATE_LIMIT_WINDOW = 15 * 60000; // 15 minutes
+const MAX_AUTH_REQUESTS_PER_WINDOW = 10;
+
+function authRateLimiter(req: Request, res: Response, next: NextFunction) {
+  const rawIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || req.socket.remoteAddress || 'unknown';
+  const ip = rawIp.trim();
+  const now = Date.now();
+
+  const limit = authRateLimits.get(ip);
+  if (!limit || now - limit.lastReset > AUTH_RATE_LIMIT_WINDOW) {
+    authRateLimits.set(ip, { count: 1, lastReset: now });
+    return next();
+  }
+
+  limit.count++;
+  if (limit.count > MAX_AUTH_REQUESTS_PER_WINDOW) {
+    return res.status(429).json({ error: 'Too many attempts. Please wait a few minutes and try again.' });
+  }
+
+  next();
+}
+
 // Auth Middleware
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
@@ -94,13 +121,12 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
   }
 
   const token = authHeader.split(' ')[1];
-  const session = sessions.get(token);
-  if (!session || session.expiresAt < Date.now()) {
-    if (session) sessions.delete(token);
+  const session = db.getSession(token);
+  if (!session) {
     return res.status(401).json({ error: 'Session expired. Please log in again.' });
   }
 
-  const user = db.getUsers().find(u => u.id === session.userId);
+  const user = db.getUsers().find(u => u.id === session.user_id);
   if (!user) {
     return res.status(401).json({ error: 'User no longer exists' });
   }
@@ -151,7 +177,7 @@ function requireVerifiedFleetOwner(req: Request, res: Response, next: NextFuncti
 // --- API ROUTES ---
 
 // 1. Authentication
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', authRateLimiter, (req, res) => {
   const rawRole = (req.body.role || req.body.user_role || 'fleet_owner').toString().toLowerCase();
   const {
     email,
@@ -339,7 +365,7 @@ app.post('/api/auth/verify-email', (req, res) => {
   res.json({ message: 'Email verified successfully.' });
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', authRateLimiter, async (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required.' });
@@ -369,9 +395,11 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   const token = 'token_' + crypto.randomBytes(24).toString('hex');
-  sessions.set(token, {
-    userId: user.id,
-    expiresAt: Date.now() + SESSION_DURATION
+  await db.addSession({
+    token,
+    user_id: user.id,
+    expires_at: new Date(Date.now() + SESSION_DURATION).toISOString(),
+    created_at: new Date().toISOString()
   });
 
   db.logAudit({
@@ -408,7 +436,7 @@ app.post('/api/auth/login', (req, res) => {
   });
 });
 
-app.post('/api/auth/forgot-password', (req, res) => {
+app.post('/api/auth/forgot-password', authRateLimiter, (req, res) => {
   const { email } = req.body;
   if (!email) {
     return res.status(400).json({ error: 'Email is required.' });
@@ -418,8 +446,12 @@ app.post('/api/auth/forgot-password', (req, res) => {
   
   if (user) {
     const token = 'rst_' + crypto.randomBytes(16).toString('hex');
-    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes
-    resetTokens.set(token, { email: email.toLowerCase(), expiresAt });
+    db.addResetToken({
+      token,
+      email: email.toLowerCase(),
+      expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(), // 15 minutes
+      created_at: new Date().toISOString()
+    });
 
     const emailPayload = {
       id: 'email_' + crypto.randomUUID(),
@@ -449,20 +481,15 @@ app.post('/api/auth/forgot-password', (req, res) => {
   res.json({ message: 'If that email address is in our system, we have sent a password reset token to it.' });
 });
 
-app.post('/api/auth/reset-password', (req, res) => {
+app.post('/api/auth/reset-password', authRateLimiter, (req, res) => {
   const { token, newPassword } = req.body;
   if (!token || !newPassword) {
     return res.status(400).json({ error: 'Token and new password are required.' });
   }
 
-  const resetData = resetTokens.get(token);
+  const resetData = db.getResetToken(token);
   if (!resetData) {
     return res.status(400).json({ error: 'Invalid or expired password reset token.' });
-  }
-
-  if (resetData.expiresAt < Date.now()) {
-    resetTokens.delete(token);
-    return res.status(400).json({ error: 'Password reset token has expired.' });
   }
 
   // Strong password checks
@@ -492,12 +519,12 @@ app.post('/api/auth/reset-password', (req, res) => {
     user_agent: req.headers['user-agent'] || 'unknown'
   });
 
-  resetTokens.delete(token);
+  db.deleteResetToken(token);
 
   res.json({ message: 'Password has been reset successfully. You can now log in with your new password.' });
 });
 
-app.post('/api/auth/change-password', requireAuth, (req, res) => {
+app.post('/api/auth/change-password', authRateLimiter, requireAuth, (req, res) => {
   const { currentPassword, newPassword } = req.body;
   const user = (req as any).user;
 
@@ -536,23 +563,146 @@ app.post('/api/auth/change-password', requireAuth, (req, res) => {
   res.json({ message: 'Your password has been changed successfully.' });
 });
 
+// POPI/GDPR-style self-service data export: a full dump of what this
+// account owns, for the user to download themselves.
+app.get('/api/auth/export-data', requireAuth, (req, res) => {
+  const user = (req as any).user;
+
+  const exportPayload: any = {
+    exported_at: new Date().toISOString(),
+    account: {
+      id: user.id,
+      role: user.role,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      status: user.status,
+      email_verified_at: user.email_verified_at,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+      popi_consent_accepted: user.popi_consent_accepted ?? null,
+      popi_consent_at: user.popi_consent_at ?? null
+    }
+  };
+
+  if (user.role === 'fleet_owner') {
+    const profile = db.getProfiles().find(p => p.user_id === user.id);
+    exportPayload.fleet_owner_profile = profile || null;
+    if (profile) {
+      exportPayload.documents = db.getDocuments().filter(d => d.fleet_owner_id === profile.id || d.fleet_owner_id === user.id);
+    }
+  } else if (user.role === 'driver') {
+    const driverProfile = db.getDriverProfiles().find(dp => dp.user_id === user.id);
+    exportPayload.driver_profile = driverProfile || null;
+    if (driverProfile) {
+      exportPayload.documents = db.getDriverDocuments(driverProfile.id);
+    }
+  }
+
+  exportPayload.notifications = db.getNotifications(user.id);
+
+  db.logAudit({
+    user_id: user.id,
+    action: 'DATA_EXPORT_REQUESTED',
+    entity_type: 'User',
+    entity_id: user.id,
+    old_value: '',
+    new_value: 'User exported their own account data',
+    ip_address: req.socket.remoteAddress || '127.0.0.1',
+    user_agent: req.headers['user-agent'] || 'unknown'
+  });
+
+  res.setHeader('Content-Disposition', 'attachment; filename="fleetcheck-my-data.json"');
+  res.json(exportPayload);
+});
+
+// POPI/GDPR-style self-service account deletion. Complaints, disputes, and
+// audit log entries involving this account are intentionally retained (they
+// concern other parties too, and audit history needs to survive the account
+// that generated it) -- what's deleted is this account's own identifying
+// data: the user record, its role-specific profile, and its own uploaded
+// documents.
+app.post('/api/auth/delete-account', authRateLimiter, requireAuth, (req, res) => {
+  const user = (req as any).user;
+  const { password } = req.body;
+
+  if (!password) {
+    return res.status(400).json({ error: 'Please enter your password to confirm account deletion.' });
+  }
+  if (!verifyPassword(password, user.password_hash)) {
+    return res.status(400).json({ error: 'Incorrect password.' });
+  }
+
+  if (user.role === 'admin') {
+    const adminCount = db.getUsers().filter(u => u.role === 'admin').length;
+    if (adminCount <= 1) {
+      return res.status(400).json({ error: 'Cannot delete the only remaining administrator account. Create another admin first.' });
+    }
+  }
+
+  if (user.role === 'fleet_owner') {
+    const profile = db.getProfiles().find(p => p.user_id === user.id);
+    if (profile) {
+      db.getDocuments().filter(d => d.fleet_owner_id === profile.id || d.fleet_owner_id === user.id).forEach(d => db.deleteDocument(d.id));
+      db.deleteFleetOwnerProfile(profile.id);
+    }
+  } else if (user.role === 'driver') {
+    const driverProfile = db.getDriverProfiles().find(dp => dp.user_id === user.id);
+    if (driverProfile) {
+      db.getDriverDocuments(driverProfile.id).forEach(d => db.deleteDriverDocument(d.id));
+
+      // Also remove the linked entry in the driver reputation registry (the
+      // encrypted-PII record complaints/searches reference) -- but only if
+      // no complaint currently references it. A complaint filed against this
+      // driver is retained (it concerns the fleet owner who filed it too),
+      // and that record needs its referenced driver_id to keep resolving.
+      const matchingDrivers = resolveMatchingDrivers(driverProfile);
+      matchingDrivers.forEach(d => {
+        const hasComplaints = db.getComplaints().some(c => c.driver_id === d.id);
+        if (!hasComplaints) {
+          db.deleteRiskScoresForDriver(d.id);
+          db.deleteDriver(d.id);
+        }
+      });
+
+      db.deleteDriverProfile(driverProfile.id);
+    }
+  }
+
+  db.logAudit({
+    user_id: user.id,
+    action: 'ACCOUNT_SELF_DELETED',
+    entity_type: 'User',
+    entity_id: user.id,
+    old_value: `${user.role}: ${user.email}`,
+    new_value: 'Account permanently deleted by user request',
+    ip_address: req.socket.remoteAddress || '127.0.0.1',
+    user_agent: req.headers['user-agent'] || 'unknown'
+  });
+
+  db.deleteAllSessionsForUser(user.id);
+  db.deleteUser(user.id);
+
+  res.json({ message: 'Your account and associated data have been permanently deleted.' });
+});
+
 app.post('/api/auth/logout', (req, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
-    const session = sessions.get(token);
+    const session = db.getSession(token);
     if (session) {
       db.logAudit({
-        user_id: session.userId,
+        user_id: session.user_id,
         action: 'LOGOUT',
         entity_type: 'User',
-        entity_id: session.userId,
+        entity_id: session.user_id,
         old_value: 'Active Session',
         new_value: 'Destroyed Session',
         ip_address: req.socket.remoteAddress || '127.0.0.1',
         user_agent: req.headers['user-agent'] || 'unknown'
       });
-      sessions.delete(token);
+      db.deleteSession(token);
     }
   }
   res.json({ success: true, message: 'Logged out successfully.' });
@@ -1454,9 +1604,9 @@ app.get('/api/marketplace/drivers', (req, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
-    const session = sessions.get(token);
-    if (session && session.expiresAt > Date.now()) {
-      const user = db.getUsers().find(u => u.id === session.userId);
+    const session = db.getSession(token);
+    if (session) {
+      const user = db.getUsers().find(u => u.id === session.user_id);
       if (user && user.status !== 'suspended') {
         userRole = user.role;
         if (user.role === 'fleet_owner') {
@@ -1484,9 +1634,9 @@ app.get('/api/marketplace/vehicles', (req, res) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const token = authHeader.split(' ')[1];
-    const session = sessions.get(token);
-    if (session && session.expiresAt > Date.now()) {
-      const user = db.getUsers().find(u => u.id === session.userId);
+    const session = db.getSession(token);
+    if (session) {
+      const user = db.getUsers().find(u => u.id === session.user_id);
       if (user && user.status !== 'suspended') {
         userRole = user.role;
       }
@@ -1763,14 +1913,16 @@ function matchPhoneQuery(rawPhone: string, queryPhone: string): boolean {
 
 // Resolve which Complaint records were filed against a given driver identity,
 // matched by email/phone/ID number against the encrypted Driver record linked to each complaint.
-function resolveDriverComplaints(driverProfile: { email: string; phone: string; id_number: string }): Complaint[] {
+// Driver registry entries (server.ts's `Driver` records, holding encrypted
+// PII) aren't directly foreign-keyed to a DriverProfile/User -- they're
+// matched by decrypted email/phone/ID number, same identity-matching used
+// throughout the complaint/chat-access flows below.
+function resolveMatchingDrivers(driverProfile: { email: string; phone: string; id_number: string }): Driver[] {
   const dEmail = (driverProfile.email || '').toLowerCase();
   const dPhone = (driverProfile.phone || '').replace(/[\s\-\(\)]/g, '');
   const dId = (driverProfile.id_number || '').trim();
 
-  return db.getComplaints().filter(c => {
-    const d = db.getDrivers().find(drv => drv.id === c.driver_id);
-    if (!d) return false;
+  return db.getDrivers().filter(d => {
     const cEmail = decrypt(d.email_encrypted).toLowerCase();
     const cPhone = decrypt(d.phone_encrypted).replace(/[\s\-\(\)]/g, '');
     const cId = decrypt(d.id_number_encrypted).trim();
@@ -1780,6 +1932,11 @@ function resolveDriverComplaints(driverProfile: { email: string; phone: string; 
       (dId && cId && dId === cId)
     );
   });
+}
+
+function resolveDriverComplaints(driverProfile: { email: string; phone: string; id_number: string }): Complaint[] {
+  const matchingDriverIds = new Set(resolveMatchingDrivers(driverProfile).map(d => d.id));
+  return db.getComplaints().filter(c => matchingDriverIds.has(c.driver_id));
 }
 
 // 3. Driver & Public Search / Incident Reference
@@ -4458,6 +4615,10 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
   });
+
+  // Sweep expired sessions/reset tokens periodically so they don't
+  // accumulate in Firestore forever if nobody ever looks them up again.
+  setInterval(() => db.cleanupExpired(), 60 * 60 * 1000);
 }
 
 startServer().catch(err => {
