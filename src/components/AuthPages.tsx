@@ -1,7 +1,5 @@
 import React from 'react';
 import { ShieldCheck, Mail, Lock, User as UserIcon, Phone, Briefcase, MapPin, Layers, FileText, CheckSquare, RefreshCw, AlertCircle, KeyRound, Info, Check, Building2 } from 'lucide-react';
-import { auth as clientAuth, googleProvider } from '../lib/firebase';
-import { signInWithPopup } from 'firebase/auth';
 import { compressImageFile, CompressedFileResult } from '../utils/imageCompressor';
 
 interface AuthPagesProps {
@@ -260,36 +258,6 @@ export default function AuthPages({
       setResetError(err.message);
     } finally {
       setResetLoading(false);
-    }
-  };
-
-  // Quick Demo Login Helper
-  const handleGoogleAuth = async () => {
-    setLoginError('');
-    setRegError('');
-    setLoginLoading(true);
-    try {
-      const result = await signInWithPopup(clientAuth, googleProvider);
-      const idToken = await result.user.getIdToken();
-      
-      const res = await fetch('/api/auth/google', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken })
-      });
-      
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Google sign-in failed.');
-      
-      onLoginSuccess(data);
-    } catch (err: any) {
-      if (activeTab === 'login') {
-        setLoginError(err.message || 'Google Sign-In failed.');
-      } else {
-        setRegError(err.message || 'Google Sign-Up failed.');
-      }
-    } finally {
-      setLoginLoading(false);
     }
   };
 
@@ -865,42 +833,14 @@ export default function AuthPages({
                 </form>
 
                 {!isAdminPortal && (
-                  <>
-                    <div className="relative my-6">
-                      <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                        <div className="w-full border-t border-stone-200"></div>
-                      </div>
-                      <div className="relative flex justify-center text-xs uppercase">
-                        <span className="bg-white px-3 text-stone-400 font-bold tracking-wider">Or continue with</span>
-                      </div>
-                    </div>
-
+                  <div className="text-center pt-2">
                     <button
-                      type="button"
-                      onClick={handleGoogleAuth}
-                      disabled={loginLoading}
-                      className="w-full py-3 bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 font-bold text-sm rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-3 shadow-xs min-h-[44px]"
+                      onClick={() => setActiveTab('register')}
+                      className="text-xs text-stone-500 hover:text-stone-900 font-bold underline transition-colors cursor-pointer py-1"
                     >
-                      <svg className="h-5 w-5" viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
-                        <g transform="matrix(1, 0, 0, 1, 0, 0)">
-                          <path d="M21.35,11.1H12v2.7h5.38c-0.24,1.28 -0.96,2.37 -2.04,3.1v2.6h3.3c1.93,-1.78 3.04,-4.4 3.04,-7.4c0,-0.71 -0.06,-1.39 -0.18,-2H21.35z" fill="#4285F4" />
-                          <path d="M12,20.6c2.59,0 4.77,-0.86 6.36,-2.3l-3.3,-2.6c-0.91,0.61 -2.08,0.98 -3.06,0.98 -2.48,0 -4.59,-1.68 -5.34,-3.93H3.21v2.7c1.58,3.15 4.84,5.15 8.79,5.15z" fill="#34A853" />
-                          <path d="M6.66,12.75c-0.13,-0.38 -0.21,-0.79 -0.21,-1.2c0,-0.41 0.08,-0.82 0.21,-1.2V7.65H3.21C2.65,8.77 2.33,10.05 2.33,11.4c0,1.35 0.32,2.63 0.88,3.75l3.45,-2.4V12.75z" fill="#FBBC05" />
-                          <path d="M12,5.25c1.41,0 2.68,0.49 3.68,1.44l2.76,-2.76C16.77,2.32 14.59,1.4 12,1.4c-3.95,0 -7.21,2 -8.79,5.15l3.45,2.7c0.75,-2.25 2.86,-3.93 5.34,-3.93z" fill="#EA4335" />
-                        </g>
-                      </svg>
-                      <span>Google</span>
+                      Don't have an operator account? Register your fleet now.
                     </button>
-
-                    <div className="text-center pt-2">
-                      <button
-                        onClick={() => setActiveTab('register')}
-                        className="text-xs text-stone-500 hover:text-stone-900 font-bold underline transition-colors cursor-pointer py-1"
-                      >
-                        Don't have an operator account? Register your fleet now.
-                      </button>
-                    </div>
-                  </>
+                  </div>
                 )}
               </div>
             )

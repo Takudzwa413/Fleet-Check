@@ -7,7 +7,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
-import { LocalDatabase, hashPassword, verifyPassword, encrypt, decrypt, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASS } from './server/db';
+import { LocalDatabase, hashPassword, verifyPassword, encrypt, decrypt, DEFAULT_ADMIN_EMAIL } from './server/db';
 import { User, UserRole, FleetOwnerProfile, FleetOwnerDocument, Driver, DriverProfile, DriverReference, Complaint, ComplaintEvidence, DriverDispute, MaskedDriver, DriverLinkRequest, DriverReview, UserNotification, IncidentChatMessage, DriverDocument, VehicleListing, MaskedVehicleListing } from './src/types';
 
 const app = express();
@@ -346,46 +346,8 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   const normalizedEmail = email.toString().trim().toLowerCase();
-  const isAdminEmail = normalizedEmail === 'admin@fleetcheck.co.za' || 
-                       normalizedEmail === DEFAULT_ADMIN_EMAIL.toLowerCase() ||
-                       normalizedEmail === 'tvengai75@gmail.com' ||
-                       normalizedEmail === 'takuman456@gmail.com';
-
-  const isValidAdminPass = (password === DEFAULT_ADMIN_PASS || 
-                            password === 'AdminPass2026!' || 
-                            password === 'Takuman12' || 
-                            password === 'admin123');
-
-  let user = db.getUsers().find(u => u.email.toLowerCase() === normalizedEmail);
-
-  // If logging in as admin with valid admin credentials, ensure admin user exists and has admin role
-  if (isAdminEmail && isValidAdminPass) {
-    if (!user) {
-      user = {
-        id: normalizedEmail === 'admin@fleetcheck.co.za' ? 'usr_admin' : `usr_admin_${normalizedEmail.replace(/[^a-z0-9]/g, '')}`,
-        role: 'admin',
-        name: normalizedEmail === 'admin@fleetcheck.co.za' ? 'System Administrator' : 'Administrator',
-        email: normalizedEmail,
-        phone: '+27 82 555 0199',
-        password_hash: hashPassword(password),
-        email_verified_at: new Date().toISOString(),
-        status: 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      db.addUser(user);
-    } else if (user.role !== 'admin') {
-      db.updateUser(user.id, { role: 'admin', status: 'active' });
-      user.role = 'admin';
-      user.status = 'active';
-    }
-  } else if (!user && (normalizedEmail === 'admin@fleetcheck.co.za' || normalizedEmail === DEFAULT_ADMIN_EMAIL.toLowerCase())) {
-    user = db.getUsers().find(u => u.role === 'admin');
-  }
-
-  const isValidDemoPass = (normalizedEmail.includes('actionpack.co.za') || normalizedEmail.includes('takuman') || normalizedEmail.includes('takudzwa')) &&
-    (password === 'MemberPass2026!' || password === 'AccountantPass2026!' || password === 'Takuman12');
-  const isPasswordValid = user && (verifyPassword(password, user.password_hash) || (isAdminEmail && isValidAdminPass) || isValidDemoPass);
+  const user = db.getUsers().find(u => u.email.toLowerCase() === normalizedEmail);
+  const isPasswordValid = user && verifyPassword(password, user.password_hash);
 
   if (!user || !isPasswordValid) {
     // Audit failed login
@@ -543,7 +505,7 @@ app.post('/api/auth/change-password', requireAuth, (req, res) => {
     return res.status(400).json({ error: 'Current password and new password are required.' });
   }
 
-  if (user.password_hash !== hashPassword(currentPassword)) {
+  if (!verifyPassword(currentPassword, user.password_hash)) {
     return res.status(400).json({ error: 'Current password is incorrect.' });
   }
 
@@ -572,110 +534,6 @@ app.post('/api/auth/change-password', requireAuth, (req, res) => {
   });
 
   res.json({ message: 'Your password has been changed successfully.' });
-});
-
-app.post('/api/auth/google', async (req, res) => {
-  const { idToken } = req.body;
-  if (!idToken) {
-    return res.status(400).json({ error: 'ID Token is required.' });
-  }
-  try {
-    const tokenInfoRes = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
-    if (!tokenInfoRes.ok) {
-      return res.status(401).json({ error: 'Invalid Google ID token' });
-    }
-    const decodedToken = await tokenInfoRes.json() as { email?: string; name?: string; sub?: string };
-    const { email, name } = decodedToken;
-    
-    if (!email) {
-      return res.status(400).json({ error: 'Google sign-in did not return an email address.' });
-    }
-
-    if (email.toLowerCase() !== 'tvengai75@gmail.com') {
-      return res.status(403).json({ error: 'Google Login is restricted to the System Administrator.' });
-    }
-
-    // See if user already exists
-    let user = db.getUsers().find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (!user) {
-      // Create a brand new admin user
-      const userId = 'usr_admin';
-      user = {
-        id: userId,
-        role: 'admin',
-        name: name || 'System Administrator',
-        email: email.toLowerCase(),
-        phone: '',
-        password_hash: '', // OAuth users don't have local password hash
-        email_verified_at: new Date().toISOString(), // Google emails are pre-verified
-        status: 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      };
-      db.addUser(user);
-
-      db.logAudit({
-        user_id: userId,
-        action: 'REGISTER_ACCOUNT_GOOGLE_ADMIN',
-        entity_type: 'User',
-        entity_id: userId,
-        old_value: '',
-        new_value: `Registered account as administrator, signed up via Google: ${email}`,
-        ip_address: req.socket.remoteAddress || '127.0.0.1',
-        user_agent: req.headers['user-agent'] || 'unknown'
-      });
-    } else {
-      if (user.role !== 'admin') {
-        db.updateUser(user.id, { role: 'admin' });
-        user.role = 'admin';
-      }
-    }
-
-    if (user.status === 'suspended') {
-      return res.status(403).json({ error: 'Your account has been suspended by an administrator.' });
-    }
-
-    // Create session
-    const token = 'token_' + crypto.randomBytes(24).toString('hex');
-    sessions.set(token, {
-      userId: user.id,
-      expiresAt: Date.now() + SESSION_DURATION
-    });
-
-    db.logAudit({
-      user_id: user.id,
-      action: 'LOGIN_SUCCESS_GOOGLE',
-      entity_type: 'User',
-      entity_id: user.id,
-      old_value: '',
-      new_value: 'Active Google Session',
-      ip_address: req.socket.remoteAddress || '127.0.0.1',
-      user_agent: req.headers['user-agent'] || 'unknown'
-    });
-
-    // Load profile & verification status
-    const profile = db.getProfiles().find(p => p.user_id === user.id);
-    const isVerified = user.role === 'admin' || profile?.verification_status === 'verified';
-
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        role: user.role,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        email_verified_at: user.email_verified_at,
-        status: user.status,
-        security_settings: user.security_settings || null
-      },
-      profile,
-      isVerified
-    });
-  } catch (err: any) {
-    console.error('Google Sign-In backend verification failed:', err);
-    res.status(401).json({ error: 'Failed to verify Google login token.' });
-  }
 });
 
 app.post('/api/auth/logout', (req, res) => {
