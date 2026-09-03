@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, LogOut, User as UserIcon, Settings, Lock, Menu, X, ChevronDown, Building2, Users, Bell, CheckCheck, MessageSquare, AlertCircle, AlertTriangle, ShieldAlert, Clock, Search, Car } from 'lucide-react';
+import { ShieldCheck, LogOut, User as UserIcon, Settings, Lock, Menu, X, Building2, Users, Bell, CheckCheck, MessageSquare, AlertCircle, AlertTriangle, ShieldAlert, Clock, Search, Car } from 'lucide-react';
 import { User, UserNotification } from '../types';
 
 interface NavbarProps {
@@ -9,7 +9,6 @@ interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
   onLogout: () => void;
-  onSelectLoginRole?: (role: 'fleet_owner' | 'driver' | 'admin') => void;
   onOpenChat?: (complaintId: string) => void;
   onOpenChatThreads?: () => void;
   unreadChatCount?: number;
@@ -22,19 +21,16 @@ export default function Navbar({
   activeTab,
   setActiveTab,
   onLogout,
-  onSelectLoginRole,
   onOpenChat,
   onOpenChatThreads,
   unreadChatCount = 0
 }: NavbarProps) {
   const [isOpen, setIsOpen] = React.useState(false);
-  const [loginDropdownOpen, setLoginDropdownOpen] = React.useState(false);
   const [notificationDropdownOpen, setNotificationDropdownOpen] = React.useState(false);
   const [notifications, setNotifications] = React.useState<UserNotification[]>([]);
   const [unreadCount, setUnreadCount] = React.useState(0);
   const [loadingNotifs, setLoadingNotifs] = React.useState(false);
 
-  const dropdownRef = React.useRef<HTMLDivElement>(null);
   const notifRef = React.useRef<HTMLDivElement>(null);
 
   const fetchNotifications = async () => {
@@ -66,9 +62,6 @@ export default function Navbar({
 
   React.useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setLoginDropdownOpen(false);
-      }
       if (notifRef.current && !notifRef.current.contains(event.target as Node)) {
         setNotificationDropdownOpen(false);
       }
@@ -105,14 +98,6 @@ export default function Navbar({
     }
   };
 
-  const handleRoleLoginSelect = (role: 'fleet_owner' | 'driver' | 'admin') => {
-    setLoginDropdownOpen(false);
-    setIsOpen(false);
-    if (onSelectLoginRole) {
-      onSelectLoginRole(role);
-    }
-    setActiveTab('login');
-  };
 
   const getNotifIcon = (type: string) => {
     switch (type) {
@@ -380,64 +365,12 @@ export default function Navbar({
               </>
             ) : (
               <>
-                {/* Login Button with Dropdown for Driver, Fleet Owner, Admin */}
-                <div className="relative" ref={dropdownRef}>
-                  <button
-                    onClick={() => setLoginDropdownOpen(!loginDropdownOpen)}
-                    className="px-3.5 py-2 text-sm font-semibold text-[#1f1f1f] hover:text-black hover:bg-stone-100 rounded-xl transition-colors flex items-center space-x-1.5 border border-stone-200 bg-white shadow-2xs cursor-pointer"
-                  >
-                    <span>Log In</span>
-                    <ChevronDown className={`h-3.5 w-3.5 text-stone-500 transition-transform ${loginDropdownOpen ? 'rotate-180' : ''}`} />
-                  </button>
-
-                  {loginDropdownOpen && (
-                    <div className="absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-stone-200 py-2 z-50 divide-y divide-stone-100">
-                      <div className="px-3.5 py-1.5 text-[10px] font-bold text-stone-400 uppercase tracking-wider">
-                        Select Login Portal
-                      </div>
-                      <div className="py-1">
-                        <button
-                          onClick={() => handleRoleLoginSelect('fleet_owner')}
-                          className="w-full text-left px-3.5 py-2.5 text-xs font-semibold hover:bg-stone-50 hover:text-[#1f1f1f] flex items-center space-x-3 transition-colors cursor-pointer"
-                        >
-                          <div className="p-1.5 rounded-lg bg-stone-100 text-[#1f1f1f]">
-                            <Building2 className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <div className="font-bold text-[#1f1f1f]">Fleet Owner</div>
-                            <div className="text-[10px] text-stone-400 font-normal">Manage fleet & driver checks</div>
-                          </div>
-                        </button>
-
-                        <button
-                          onClick={() => handleRoleLoginSelect('driver')}
-                          className="w-full text-left px-3.5 py-2.5 text-xs font-semibold hover:bg-stone-50 hover:text-[#1f1f1f] flex items-center space-x-3 transition-colors cursor-pointer"
-                        >
-                          <div className="p-1.5 rounded-lg bg-stone-100 text-[#1f1f1f]">
-                            <UserIcon className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <div className="font-bold text-[#1f1f1f]">Driver</div>
-                            <div className="text-[10px] text-stone-400 font-normal">Manage profile & responses</div>
-                          </div>
-                        </button>
-
-                        <button
-                          onClick={() => handleRoleLoginSelect('admin')}
-                          className="w-full text-left px-3.5 py-2.5 text-xs font-semibold hover:bg-stone-50 hover:text-[#1f1f1f] flex items-center space-x-3 transition-colors cursor-pointer"
-                        >
-                          <div className="p-1.5 rounded-lg bg-stone-100 text-[#1f1f1f]">
-                            <Lock className="h-4 w-4" />
-                          </div>
-                          <div>
-                            <div className="font-bold text-[#1f1f1f]">System Admin</div>
-                            <div className="text-[10px] text-stone-400 font-normal">Platform moderation</div>
-                          </div>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <button
+                  onClick={() => setActiveTab('login')}
+                  className="px-3.5 py-2 text-sm font-semibold text-[#1f1f1f] hover:text-black hover:bg-stone-100 rounded-xl transition-colors border border-stone-200 bg-white shadow-2xs cursor-pointer"
+                >
+                  Log In
+                </button>
 
                 <button
                   onClick={() => setActiveTab('register')}
@@ -601,27 +534,12 @@ export default function Navbar({
             </div>
           ) : (
             <div className="space-y-2 px-3 pt-2">
-              <div className="text-[10px] font-bold uppercase text-stone-400 tracking-wider">Log In Options</div>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  onClick={() => handleRoleLoginSelect('fleet_owner')}
-                  className="py-2 text-center text-xs font-bold bg-stone-100 text-stone-800 border border-stone-200 rounded-lg cursor-pointer"
-                >
-                  Fleet Owner
-                </button>
-                <button
-                  onClick={() => handleRoleLoginSelect('driver')}
-                  className="py-2 text-center text-xs font-bold bg-stone-100 text-stone-800 border border-stone-200 rounded-lg cursor-pointer"
-                >
-                  Driver
-                </button>
-                <button
-                  onClick={() => handleRoleLoginSelect('admin')}
-                  className="py-2 text-center text-xs font-bold bg-stone-100 text-stone-800 border border-stone-200 rounded-lg cursor-pointer"
-                >
-                  Admin
-                </button>
-              </div>
+              <button
+                onClick={() => { setActiveTab('login'); setIsOpen(false); }}
+                className="w-full text-center py-2.5 bg-stone-100 text-stone-800 border border-stone-200 rounded-lg text-sm font-semibold cursor-pointer"
+              >
+                Log In
+              </button>
               <button
                 onClick={() => { setActiveTab('register'); setIsOpen(false); }}
                 className="w-full text-center py-2 bg-stone-900 hover:bg-stone-800 text-white rounded-lg text-sm font-semibold shadow-2xs mt-1 cursor-pointer"

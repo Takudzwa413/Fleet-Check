@@ -19,6 +19,11 @@ const DriverMarketplace = React.lazy(() => import('./components/DriverMarketplac
 const VehicleMarketplace = React.lazy(() => import('./components/VehicleMarketplace'));
 const DisputeForm = React.lazy(() => import('./components/DisputeForm'));
 
+// Hidden admin sign-in URL. Not linked from anywhere in the UI — normal
+// visitors registering or logging in never see an "Admin" option; only
+// someone with this exact path lands on the admin login form.
+const ADMIN_PORTAL_PATH = '/console-ff739d4b0e';
+
 export default function App() {
   const [user, setUser] = React.useState<User | null>(null);
   const [profile, setProfile] = React.useState<FleetOwnerProfile | null>(null);
@@ -26,6 +31,15 @@ export default function App() {
   const [token, setToken] = React.useState<string | null>(null);
   const [activeTab, setActiveTab] = React.useState<string>('home');
   const [selectedRolePreset, setSelectedRolePreset] = React.useState<'fleet_owner' | 'driver' | 'admin'>('fleet_owner');
+  const [isAdminPortal, setIsAdminPortal] = React.useState(false);
+
+  React.useEffect(() => {
+    if (window.location.pathname === ADMIN_PORTAL_PATH) {
+      setIsAdminPortal(true);
+      setSelectedRolePreset('admin');
+      setActiveTab('login');
+    }
+  }, []);
 
   // Real-time Chat & Clarifications State
   const [activeChatComplaintId, setActiveChatComplaintId] = React.useState<string | null>(null);
@@ -197,9 +211,6 @@ export default function App() {
         onLogout={handleLogout}
         onOpenChat={(complaintId) => setActiveChatComplaintId(complaintId)}
         onOpenChatThreads={() => setIsChatDrawerOpen(true)}
-        onSelectLoginRole={(role) => {
-          setSelectedRolePreset(role);
-        }}
       />
 
       <main className={`flex-grow w-full ${isDashboardView ? 'max-w-[1700px] mx-auto px-2 sm:px-4 lg:px-6 py-4' : 'max-w-7xl mx-auto px-4 py-8 sm:px-6 lg:px-8'}`}>
@@ -257,6 +268,7 @@ export default function App() {
               onRegisterSuccess={handleRegisterSuccess}
               selectedRolePreset={selectedRolePreset}
               onSelectRolePreset={setSelectedRolePreset}
+              isAdminPortal={isAdminPortal}
             />
           )}
 

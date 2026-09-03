@@ -11,6 +11,10 @@ interface AuthPagesProps {
   onRegisterSuccess: (message: string) => void;
   selectedRolePreset?: 'fleet_owner' | 'driver' | 'admin';
   onSelectRolePreset?: (role: 'fleet_owner' | 'driver' | 'admin') => void;
+  // True only when this page was reached via the hidden admin portal URL.
+  // Public visitors never get here, so the login form skips straight to the
+  // admin-only view instead of exposing an "Admin" option in the role switcher.
+  isAdminPortal?: boolean;
 }
 
 export default function AuthPages({
@@ -19,16 +23,21 @@ export default function AuthPages({
   onLoginSuccess,
   onRegisterSuccess,
   selectedRolePreset = 'fleet_owner',
-  onSelectRolePreset
+  onSelectRolePreset,
+  isAdminPortal = false
 }: AuthPagesProps) {
   // Login Role Tab
-  const [loginRoleTab, setLoginRoleTab] = React.useState<'fleet_owner' | 'driver' | 'admin'>(selectedRolePreset);
+  const [loginRoleTab, setLoginRoleTab] = React.useState<'fleet_owner' | 'driver' | 'admin'>(
+    isAdminPortal ? 'admin' : (selectedRolePreset === 'admin' ? 'fleet_owner' : selectedRolePreset)
+  );
 
   React.useEffect(() => {
-    if (selectedRolePreset) {
+    if (isAdminPortal) {
+      setLoginRoleTab('admin');
+    } else if (selectedRolePreset && selectedRolePreset !== 'admin') {
       setLoginRoleTab(selectedRolePreset);
     }
-  }, [selectedRolePreset]);
+  }, [selectedRolePreset, isAdminPortal]);
 
   // Login State
   const [loginEmail, setLoginEmail] = React.useState('');
@@ -255,25 +264,6 @@ export default function AuthPages({
   };
 
   // Quick Demo Login Helper
-  const handleDemoLogin = async (email: string, pass: string) => {
-    setLoginError('');
-    setLoginLoading(true);
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password: pass })
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Login failed.');
-      onLoginSuccess(data);
-    } catch (err: any) {
-      setLoginError(err.message);
-    } finally {
-      setLoginLoading(false);
-    }
-  };
-
   const handleGoogleAuth = async () => {
     setLoginError('');
     setRegError('');
@@ -739,61 +729,48 @@ export default function AuthPages({
               </div>
             ) : (
               <div className="space-y-6">
-                {/* Role Switcher Tabs for Login */}
-                <div className="bg-stone-100 p-1.5 rounded-2xl border border-stone-200">
-                  <div className="text-[10px] font-bold text-stone-500 uppercase tracking-wider px-2 py-1 mb-1">
-                    Select Account Role to Sign In
-                  </div>
-                  <div className="grid grid-cols-3 gap-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLoginRoleTab('fleet_owner');
-                        if (onSelectRolePreset) onSelectRolePreset('fleet_owner');
-                      }}
-                      className={`py-2.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer min-h-[40px] ${
-                        loginRoleTab === 'fleet_owner'
-                          ? 'bg-white text-[#1f1f1f] shadow-xs border border-stone-200'
-                          : 'text-stone-500 hover:text-stone-800'
-                      }`}
-                    >
-                      <Building2 className="h-3.5 w-3.5 text-[#1f1f1f]" />
-                      <span>Fleet Owner</span>
-                    </button>
+                {/* Role Switcher Tabs for Login — the Admin option is never shown here;
+                    admin sign-in is only reachable via the hidden portal URL below. */}
+                {!isAdminPortal && (
+                  <div className="bg-stone-100 p-1.5 rounded-2xl border border-stone-200">
+                    <div className="text-[10px] font-bold text-stone-500 uppercase tracking-wider px-2 py-1 mb-1">
+                      Select Account Role to Sign In
+                    </div>
+                    <div className="grid grid-cols-2 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoginRoleTab('fleet_owner');
+                          if (onSelectRolePreset) onSelectRolePreset('fleet_owner');
+                        }}
+                        className={`py-2.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer min-h-[40px] ${
+                          loginRoleTab === 'fleet_owner'
+                            ? 'bg-white text-[#1f1f1f] shadow-xs border border-stone-200'
+                            : 'text-stone-500 hover:text-stone-800'
+                        }`}
+                      >
+                        <Building2 className="h-3.5 w-3.5 text-[#1f1f1f]" />
+                        <span>Fleet Owner</span>
+                      </button>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLoginRoleTab('driver');
-                        if (onSelectRolePreset) onSelectRolePreset('driver');
-                      }}
-                      className={`py-2.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer min-h-[40px] ${
-                        loginRoleTab === 'driver'
-                          ? 'bg-white text-[#1f1f1f] shadow-xs border border-stone-200'
-                          : 'text-stone-500 hover:text-stone-800'
-                      }`}
-                    >
-                      <UserIcon className="h-3.5 w-3.5 text-stone-700" />
-                      <span>Driver</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLoginRoleTab('admin');
-                        if (onSelectRolePreset) onSelectRolePreset('admin');
-                      }}
-                      className={`py-2.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer min-h-[40px] ${
-                        loginRoleTab === 'admin'
-                          ? 'bg-white text-[#1f1f1f] shadow-xs border border-stone-200'
-                          : 'text-stone-500 hover:text-stone-800'
-                      }`}
-                    >
-                      <Lock className="h-3.5 w-3.5 text-stone-700" />
-                      <span>Admin</span>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLoginRoleTab('driver');
+                          if (onSelectRolePreset) onSelectRolePreset('driver');
+                        }}
+                        className={`py-2.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 cursor-pointer min-h-[40px] ${
+                          loginRoleTab === 'driver'
+                            ? 'bg-white text-[#1f1f1f] shadow-xs border border-stone-200'
+                            : 'text-stone-500 hover:text-stone-800'
+                        }`}
+                      >
+                        <UserIcon className="h-3.5 w-3.5 text-stone-700" />
+                        <span>Driver</span>
+                      </button>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="text-center sm:text-left space-y-1">
                   <h2 className="text-xl sm:text-2xl font-black text-[#1f1f1f] flex flex-wrap items-center justify-between gap-2">
@@ -823,7 +800,7 @@ export default function AuthPages({
                         required
                         placeholder={
                           loginRoleTab === 'fleet_owner' ? 'e.g. james@urbanfleets.co.za' :
-                          loginRoleTab === 'driver' ? 'e.g. sipho.driver@gmail.com' : 'e.g. tvengai75@gmail.com'
+                          loginRoleTab === 'driver' ? 'e.g. sipho.driver@gmail.com' : 'e.g. admin@fleetcheck.co.za'
                         }
                         value={loginEmail}
                         onChange={e => setLoginEmail(e.target.value)}
@@ -887,92 +864,44 @@ export default function AuthPages({
                   </button>
                 </form>
 
-                {/* Quick 1-Click Role Testing */}
-                <div className="mt-6 pt-5 border-t border-stone-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">
-                      Quick Demo Accounts (1-Click Test)
-                    </span>
-                    <span className="text-[10px] text-stone-600 font-semibold bg-stone-100 px-2 py-0.5 rounded-full border border-stone-200">
-                      Instant Access
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      disabled={loginLoading}
-                      onClick={() => handleDemoLogin('james.fleet@actionpack.co.za', 'MemberPass2026!')}
-                      className="p-2.5 bg-stone-50 hover:bg-stone-100 border border-stone-200 rounded-xl text-left transition-all cursor-pointer group"
-                    >
-                      <div className="flex items-center space-x-1.5 mb-0.5">
-                        <Building2 className="h-3.5 w-3.5 text-[#1f1f1f]" />
-                        <span className="text-xs font-bold text-stone-900 group-hover:text-black">Fleet Owner</span>
+                {!isAdminPortal && (
+                  <>
+                    <div className="relative my-6">
+                      <div className="absolute inset-0 flex items-center" aria-hidden="true">
+                        <div className="w-full border-t border-stone-200"></div>
                       </div>
-                      <div className="text-[10px] text-stone-500 truncate">james.fleet@actionpack.co.za</div>
-                    </button>
+                      <div className="relative flex justify-center text-xs uppercase">
+                        <span className="bg-white px-3 text-stone-400 font-bold tracking-wider">Or continue with</span>
+                      </div>
+                    </div>
 
                     <button
                       type="button"
+                      onClick={handleGoogleAuth}
                       disabled={loginLoading}
-                      onClick={() => handleDemoLogin('sipho.driver@actionpack.co.za', 'MemberPass2026!')}
-                      className="p-2.5 bg-stone-50 hover:bg-stone-100 border border-stone-200 rounded-xl text-left transition-all cursor-pointer group"
+                      className="w-full py-3 bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 font-bold text-sm rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-3 shadow-xs min-h-[44px]"
                     >
-                      <div className="flex items-center space-x-1.5 mb-0.5">
-                        <UserIcon className="h-3.5 w-3.5 text-stone-700" />
-                        <span className="text-xs font-bold text-stone-900 group-hover:text-black">Driver (Sipho)</span>
-                      </div>
-                      <div className="text-[10px] text-stone-500 truncate">sipho.driver@actionpack.co.za</div>
+                      <svg className="h-5 w-5" viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+                        <g transform="matrix(1, 0, 0, 1, 0, 0)">
+                          <path d="M21.35,11.1H12v2.7h5.38c-0.24,1.28 -0.96,2.37 -2.04,3.1v2.6h3.3c1.93,-1.78 3.04,-4.4 3.04,-7.4c0,-0.71 -0.06,-1.39 -0.18,-2H21.35z" fill="#4285F4" />
+                          <path d="M12,20.6c2.59,0 4.77,-0.86 6.36,-2.3l-3.3,-2.6c-0.91,0.61 -2.08,0.98 -3.06,0.98 -2.48,0 -4.59,-1.68 -5.34,-3.93H3.21v2.7c1.58,3.15 4.84,5.15 8.79,5.15z" fill="#34A853" />
+                          <path d="M6.66,12.75c-0.13,-0.38 -0.21,-0.79 -0.21,-1.2c0,-0.41 0.08,-0.82 0.21,-1.2V7.65H3.21C2.65,8.77 2.33,10.05 2.33,11.4c0,1.35 0.32,2.63 0.88,3.75l3.45,-2.4V12.75z" fill="#FBBC05" />
+                          <path d="M12,5.25c1.41,0 2.68,0.49 3.68,1.44l2.76,-2.76C16.77,2.32 14.59,1.4 12,1.4c-3.95,0 -7.21,2 -8.79,5.15l3.45,2.7c0.75,-2.25 2.86,-3.93 5.34,-3.93z" fill="#EA4335" />
+                        </g>
+                      </svg>
+                      <span>Google</span>
                     </button>
 
-                    <button
-                      type="button"
-                      disabled={loginLoading}
-                      onClick={() => handleDemoLogin('admin@fleetcheck.co.za', 'AdminPass2026!')}
-                      className="p-2.5 bg-stone-50 hover:bg-stone-100 border border-stone-200 rounded-xl text-left transition-all cursor-pointer group"
-                    >
-                      <div className="flex items-center space-x-1.5 mb-0.5">
-                        <Lock className="h-3.5 w-3.5 text-stone-700" />
-                        <span className="text-xs font-bold text-stone-900 group-hover:text-black">System Admin</span>
-                      </div>
-                      <div className="text-[10px] text-stone-500 truncate">admin@fleetcheck.co.za</div>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="relative my-6">
-                  <div className="absolute inset-0 flex items-center" aria-hidden="true">
-                    <div className="w-full border-t border-stone-200"></div>
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-white px-3 text-stone-400 font-bold tracking-wider">Or continue with</span>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={handleGoogleAuth}
-                  disabled={loginLoading}
-                  className="w-full py-3 bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 font-bold text-sm rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-3 shadow-xs min-h-[44px]"
-                >
-                  <svg className="h-5 w-5" viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
-                    <g transform="matrix(1, 0, 0, 1, 0, 0)">
-                      <path d="M21.35,11.1H12v2.7h5.38c-0.24,1.28 -0.96,2.37 -2.04,3.1v2.6h3.3c1.93,-1.78 3.04,-4.4 3.04,-7.4c0,-0.71 -0.06,-1.39 -0.18,-2H21.35z" fill="#4285F4" />
-                      <path d="M12,20.6c2.59,0 4.77,-0.86 6.36,-2.3l-3.3,-2.6c-0.91,0.61 -2.08,0.98 -3.06,0.98 -2.48,0 -4.59,-1.68 -5.34,-3.93H3.21v2.7c1.58,3.15 4.84,5.15 8.79,5.15z" fill="#34A853" />
-                      <path d="M6.66,12.75c-0.13,-0.38 -0.21,-0.79 -0.21,-1.2c0,-0.41 0.08,-0.82 0.21,-1.2V7.65H3.21C2.65,8.77 2.33,10.05 2.33,11.4c0,1.35 0.32,2.63 0.88,3.75l3.45,-2.4V12.75z" fill="#FBBC05" />
-                      <path d="M12,5.25c1.41,0 2.68,0.49 3.68,1.44l2.76,-2.76C16.77,2.32 14.59,1.4 12,1.4c-3.95,0 -7.21,2 -8.79,5.15l3.45,2.7c0.75,-2.25 2.86,-3.93 5.34,-3.93z" fill="#EA4335" />
-                    </g>
-                  </svg>
-                  <span>Google</span>
-                </button>
-
-                <div className="text-center pt-2">
-                  <button
-                    onClick={() => setActiveTab('register')}
-                    className="text-xs text-stone-500 hover:text-stone-900 font-bold underline transition-colors cursor-pointer py-1"
-                  >
-                    Don't have an operator account? Register your fleet now.
-                  </button>
-                </div>
+                    <div className="text-center pt-2">
+                      <button
+                        onClick={() => setActiveTab('register')}
+                        className="text-xs text-stone-500 hover:text-stone-900 font-bold underline transition-colors cursor-pointer py-1"
+                      >
+                        Don't have an operator account? Register your fleet now.
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )
           ) : (
